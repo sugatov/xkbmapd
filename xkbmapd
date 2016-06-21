@@ -1,0 +1,138 @@
+#!/usr/bin/env python
+# Adapted from Andrey Tataranovich script www.tataranovich.com/public/scripts/xkbmapd.py
+# to load the user's .Xkbmap file on:
+#	* startup
+#	* resume
+#	* layout switch (Unity)
+#	* shell restart (Ghome Shell)
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+import os
+import sys
+import fcntl
+import dbus
+import gobject
+import time
+from dbus.mainloop.glib import DBusGMainLoop
+import argparse
+
+parser = argparse.ArgumentParser(description='Would set your xkb keyboard layout permanent in Gnome Shell and Unity.')
+parser.add_argument('-d', help='daemonize', action='store_true')
+parser.add_argument('-f', help='file to compile', action='store', default='~/.Xkbmap', metavar='file')
+parser.add_argument('-p', help='pause before running a command', type=int, default=1, metavar='pause')
+args = parser.parse_args()
+
+daemonize = args.d
+xkbmap = args.f
+pause = args.p
+
+
+def log(line):
+	if not daemonize:
+		print line
+
+def err(line):
+	if not daemonize:
+		print line
+	else:
+		print line
+
+# Fork to background
+if daemonize:
+	if os.fork():
+		sys.exit(0)
+
+
+xkbmap = os.path.expanduser(xkbmap)
+if not os.path.isfile(xkbmap):
+	err('File not found: ' + xkbmap)
+	sys.exit(1)
+
+# Try to detect if another instance already running
+lock = open(os.path.realpath(xkbmap), 'r')
+try:
+	fcntl.flock(lock, fcntl.LOCK_EX|fcntl.LOCK_NB)
+except:
+	err('Unable to lock file: ' + xkbmap + '. Maybe another instance already running')
+	sys.exit(1)
+
+log('Using file: ' + xkbmap)
+
+# DBus init
+dbus.mainloop.glib.DBusGMainLoop(set_as_default = True)
+system_bus = dbus.SystemBus()
+session_bus = dbus.SessionBus()
+
+command = 'xkbcomp -w 0 ' + xkbmap + ' $DISPLAY' if not daemonize else 'xkbcomp -w 0 ' + xkbmap + ' $DISPLAY'
+def do():
+	if not os.path.isfile(xkbmap):
+		err('File not found: ' + xkbmap)
+		sys.exit(1)
+	log('pause...')
+	time.sleep(pause)
+	log('restoring...')
+	os.system(command)
+
+# Get the object path for the current active session
+def get_current_session_path():
+	seat = system_bus.get_object('org.freedesktop.login1', '/org/freedesktop/login1/seat/' + os.environ['XDG_SEAT'])
+	active_session = seat.Get('org.freedesktop.login1.Seat', 'ActiveSession', dbus_interface='org.freedesktop.DBus.Properties')
+	session_obj_path = active_session[1]
+	return session_obj_path
+
+# Store user session path so we can compare later
+user_session = get_current_session_path()
+
+def is_the_same_user():
+	if user_session == get_current_session_path():
+		return true
+	else:
+		return false
+
+
+# The event handlers
+def handle_prepare_for_sleep(arg):
+	log('PrepareForSleep / org.freedesktop.login1.Manager')
+	if arg == False: # PrepareForSleep returns false if resuming
+		do()
+
+def handle_properties_changed(*args):
+	log('PropertiesChanged / org.freedesktop.DBus.Properties')
+	if is_the_same_user:
+		do()
+
+def handle_client_added(arg):
+	log('ClientAdded / org.gnome.SessionManager')
+	if is_the_same_user:
+		do()
+
+# Debugme: if you have the applet active, when you resume or change sessions,
+# this layout switch handle is called too... so we are calling the command 2 times!
+# But we need the other handles because the applet can be disabled...
+def handle_re_sync(arg):
+	log('ReSync / com.canonical.Unity.Panel.Service')
+	if arg == "com.canonical.indicator.keyboard":
+		do()
+
+# Listeners
+system_bus.add_signal_receiver(handle_prepare_for_sleep, signal_name='PrepareForSleep', dbus_interface='org.freedesktop.login1.Manager')
+system_bus.add_signal_receiver(handle_properties_changed, signal_name='PropertiesChanged', dbus_interface='org.freedesktop.DBus.Properties', bus_name='org.freedesktop.login1', path='/org/freedesktop/login1/seat/' + os.environ['XDG_SEAT'])
+session_bus.add_signal_receiver(handle_re_sync, signal_name='ReSync', dbus_interface='com.canonical.Unity.Panel.Service')
+session_bus.add_signal_receiver(handle_client_added, signal_name='ClientAdded', dbus_interface='org.gnome.SessionManager', path='/org/gnome/SessionManager')
+
+do()
+
+loop = gobject.MainLoop()
+loop.run()
