@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=xkbmapd
+Comment=Would set your xkb keyboard layout permanent in Gnome Shell and Unity
+Icon=preferences-desktop-keyboard-shortcuts
+Exec=xkbmapd -d
+NoDisplay=false
+Categories=Accessibility;Settings;System;X-GNOME-Utilities;
+StartupNotify=false
+Terminal=false
+
