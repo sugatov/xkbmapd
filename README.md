@@ -1,5 +1,5 @@
 # xkbmapd
-Based on [original](http://www.tataranovich.com/public/scripts/xkbmapd.py) script by Andrey Tataranovich and [modifified](https://bugs.launchpad.net/ubuntu/+source/xorg/+bug/1243642/comments/6) by Hélio Nunes
+Based on [original](http://www.tataranovich.com/public/scripts/xkbmapd.py) script by Andrey Tataranovich and [modified](https://bugs.launchpad.net/ubuntu/+source/xorg/+bug/1243642/comments/6) by Hélio Nunes
 
 ```
 usage: xkbmapd [-h] [-d] [-f file] [-p pause]
